@@ -1,0 +1,1572 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>영수증·사진 A4 한장 정리기 - 경비처리 증빙 PDF & 사진대지 자동 병합</title>
+  <meta name="description" content="영수증이나 현장 증빙 사진 여러 장을 올리면 흑백 스캔 보정 후 메모와 함께 A4 한 장의 PDF로 0.1초 만에 깔끔하게 묶어주는 100% 무료 웹 도구입니다." />
+  <meta name="keywords" content="영수증 A4 한장 정리, 영수증 PDF 합치기, 사진 여러장 A4 한장에 인쇄, 현장 사진대지 만들기, 경비처리 영수증 모으기" />
+  <meta name="robots" content="index, follow" />
+
+  <!-- SNS 및 검색엔진 미리보기 (Open Graph) -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="영수증·사진 A4 한장 정리기 - 0.1초 초고속 A4 PDF 병합" />
+  <meta property="og:description" content="풀칠·스캔·프로그램 설치 없이 영수증과 현장 사진 여러 장을 A4 증빙 PDF 한 장으로 즉시 정리하세요." />
+  <meta property="og:locale" content="ko_KR" />
+
+  <!-- 검색엔진 구조화 데이터 -->
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "영수증·사진 A4 한장 정리기",
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "Web",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "KRW"
+      },
+      "description": "영수증 및 현장 증빙 사진을 브라우저에서 즉시 스캔 보정하고 메모와 함께 A4 규격 PDF로 병합·인쇄하는 무료 웹 도구"
+    }
+  </script>
+
+  <!-- 웹폰트 (Pretendard + Inter) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+
+  <!-- 핵심 라이브러리 (Tailwind CSS, pdf-lib, SheetJS - 다중 CDN 백업 포함) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js';"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" onerror="this.onerror=null;this.src='https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js';"></script>
+
+  <style>
+    body {
+      font-family: 'Pretendard', 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    }
+
+    /* 드래그 앤 드롭 카드 정렬 시각 효과 */
+    .receipt-card.dragging {
+      opacity: 0.45;
+      transform: scale(0.98);
+    }
+    .receipt-card.drag-over {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
+    }
+
+    /* 브라우저 직접 인쇄(@media print) 전용 스타일 */
+    #printSheetContainer {
+      display: none;
+    }
+    @media print {
+      @page {
+        margin: 0;
+      }
+      body {
+        background: #ffffff !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+      #appShell {
+        display: none !important;
+      }
+      #printSheetContainer {
+        display: block !important;
+      }
+      .print-page-img {
+        width: 100%;
+        height: auto;
+        display: block;
+        page-break-after: always;
+        break-after: page;
+      }
+      .print-page-img:last-child {
+        page-break-after: auto;
+        break-after: auto;
+      }
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col antialiased">
+
+  <!-- 인쇄 전용 숨김 영역 (바로 인쇄하기 클릭 시 활성화) -->
+  <div id="printSheetContainer"></div>
+
+  <!-- 메인 앱 화면 전체 래퍼 -->
+  <div id="appShell" class="flex-1 flex flex-col">
+
+    <!-- 상단 헤더 -->
+    <header class="bg-white/95 backdrop-blur-xs border-b border-slate-200 sticky top-0 z-20">
+      <div class="max-w-6xl mx-auto px-4 py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white flex items-center justify-center text-xl shadow-xs shrink-0">
+            🧾
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h1 class="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">영수증·사진 A4 한장 정리기</h1>
+              <span class="text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full">0.1초 즉시변환</span>
+            </div>
+            <p class="text-xs text-slate-500">경비처리 영수증 모으기 · 현장 사진대지 · 증빙 서류 A4 PDF 병합</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2 self-start sm:self-auto">
+          <button
+            type="button"
+            id="loadDemoBtn"
+            class="text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-3 py-1.5 rounded-full transition"
+          >
+            ✨ 샘플로 체험하기
+          </button>
+          <div class="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-full text-xs font-semibold">
+            <span>🔒 외부 전송 0% · 브라우저 로컬 처리</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="max-w-6xl w-full mx-auto px-4 py-6 flex-1 space-y-5">
+
+      <!-- 1. 원클릭 용도 프리셋 & 세부 레이아웃 설정 -->
+      <section class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+        <!-- 용도별 원클릭 프리셋 바 -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-extrabold text-slate-700">빠른 용도 선택:</span>
+            <button
+              type="button"
+              id="presetReceiptBtn"
+              class="text-xs font-bold px-3 py-1.5 rounded-xl border transition bg-blue-600 text-white border-blue-600 shadow-2xs"
+            >
+              🧾 영수증 경비처리용 (6장·스캔흑백)
+            </button>
+            <button
+              type="button"
+              id="presetPhotoSheetBtn"
+              class="text-xs font-bold px-3 py-1.5 rounded-xl border transition bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+            >
+              🏗️ 현장 사진대지용 (4장·선명컬러)
+            </button>
+          </div>
+          <p class="text-[11px] text-slate-500">
+            💡 카드를 마우스로 끌어다 놓거나 <strong>◀ ▶ 버튼</strong>으로 인쇄 순서를 바꿀 수 있습니다.
+          </p>
+        </div>
+
+        <!-- 세부 인쇄 옵션 그리드 -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3.5 items-end">
+          <div class="lg:col-span-3">
+            <label for="gridLayout" class="block text-xs font-bold text-slate-600 mb-1">A4 한 장당 배치 수</label>
+            <select id="gridLayout" class="w-full bg-slate-50 border border-slate-300 text-slate-800 text-xs sm:text-sm rounded-xl px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none">
+              <option value="2">2장 배치 (1열 × 2행 · 큰 서류/계약서)</option>
+              <option value="4">4장 배치 (2열 × 2행 · 사진대지/큰 영수증)</option>
+              <option value="6" selected>6장 배치 (3열 × 2행 · 영수증 표준 추천)</option>
+              <option value="8">8장 배치 (4열 × 2행 · 긴 영수증 모음)</option>
+            </select>
+          </div>
+
+          <div class="lg:col-span-2">
+            <label for="orientationSelect" class="block text-xs font-bold text-slate-600 mb-1">용지 방향</label>
+            <select id="orientationSelect" class="w-full bg-slate-50 border border-slate-300 text-slate-800 text-xs sm:text-sm rounded-xl px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none">
+              <option value="portrait" selected>A4 세로</option>
+              <option value="landscape">A4 가로</option>
+            </select>
+          </div>
+
+          <div class="lg:col-span-2">
+            <label for="filterModeSelect" class="block text-xs font-bold text-slate-600 mb-1">이미지 보정</label>
+            <select id="filterModeSelect" class="w-full bg-slate-50 border border-slate-300 text-slate-800 text-xs sm:text-sm rounded-xl px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none">
+              <option value="scan" selected>스캔 흑백 (글씨 선명)</option>
+              <option value="brightColor">선명 컬러 (그림자 완화)</option>
+              <option value="original">원본 그대로</option>
+            </select>
+          </div>
+
+          <div class="lg:col-span-2">
+            <label for="fitModeSelect" class="block text-xs font-bold text-slate-600 mb-1">사진 채우기</label>
+            <select id="fitModeSelect" class="w-full bg-slate-50 border border-slate-300 text-slate-800 text-xs sm:text-sm rounded-xl px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none">
+              <option value="contain" selected>전체 다 보이게 (추천)</option>
+              <option value="cover">칸에 꽉 차게 (사진대지)</option>
+            </select>
+          </div>
+
+          <div class="lg:col-span-3">
+            <label for="pdfTitleInput" class="block text-xs font-bold text-slate-600 mb-1">
+              A4 상단 문서 제목 <span class="font-normal text-slate-400">(선택)</span>
+            </label>
+            <input
+              type="text"
+              id="pdfTitleInput"
+              placeholder="예: 2026년 11월 경비 증빙 (홍길동)"
+              class="w-full bg-slate-50 border border-slate-300 text-slate-800 text-xs sm:text-sm rounded-xl px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none"
+            />
+          </div>
+        </div>
+
+        <!-- 하단 보조 체크박스 -->
+        <div class="flex flex-wrap items-center gap-x-6 gap-y-2 pt-1 text-xs text-slate-600">
+          <label class="inline-flex items-center cursor-pointer select-none">
+            <input id="dashedBorderToggle" type="checkbox" checked class="w-4 h-4 text-blue-600 bg-slate-100 border-slate-300 rounded focus:ring-blue-500" />
+            <span class="ml-2 font-medium">점선 절취선 테두리 표시</span>
+          </label>
+          <label class="inline-flex items-center cursor-pointer select-none">
+            <input id="showHeaderSumToggle" type="checkbox" checked class="w-4 h-4 text-blue-600 bg-slate-100 border-slate-300 rounded focus:ring-blue-500" />
+            <span class="ml-2 font-medium">입력한 금액 합계를 A4 상단에 자동 표시</span>
+          </label>
+        </div>
+      </section>
+
+      <!-- 2. 영수증·사진 업로드 영역 -->
+      <section id="dropZone" class="bg-white border-2 border-dashed border-blue-300 hover:border-blue-500 hover:bg-blue-50/40 transition-all rounded-2xl p-7 sm:p-9 text-center cursor-pointer group shadow-xs">
+        <input type="file" id="fileInput" accept="image/*" multiple class="hidden" />
+        <div class="max-w-lg mx-auto space-y-2.5">
+          <div class="w-14 h-14 bg-blue-100 group-hover:scale-105 transition-transform text-blue-600 rounded-2xl flex items-center justify-center mx-auto text-3xl">
+            📸
+          </div>
+          <p class="text-base sm:text-lg font-bold text-slate-800">영수증 또는 증빙 사진을 선택하거나 여기에 끌어다 놓으세요</p>
+          <p class="text-xs text-slate-500">스마트폰 카메라 직접 촬영 및 수십 장 동시 업로드 지원 · 0.1초 즉시 변환</p>
+          <div class="pt-2">
+            <span class="inline-block bg-blue-600 group-hover:bg-blue-700 text-white text-sm font-semibold px-6 py-2.5 rounded-xl shadow-xs transition">
+              + 사진 여러 장 올리기
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. 통합 액션 바 (1장 이상 업로드 시 표시) -->
+      <section id="actionBar" class="hidden bg-slate-900 text-white p-4 rounded-2xl shadow-md flex flex-col lg:flex-row items-center justify-between gap-4">
+        <div class="flex flex-wrap items-center justify-center lg:justify-start gap-2.5">
+          <span id="summaryBadge" class="text-sm font-bold">총 0장 · A4 0장 분량</span>
+          <span id="totalAmountBadge" class="hidden text-xs bg-slate-800 text-amber-300 border border-slate-700 px-3 py-1 rounded-lg font-bold">
+            입력 금액 합계: 0원
+          </span>
+          <button id="sortDateBtn" type="button" class="hidden text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-2.5 py-1 rounded-lg transition">
+            📅 날짜순 정렬
+          </button>
+          <button id="clearAllBtn" type="button" class="text-xs text-slate-400 hover:text-rose-400 underline ml-1">
+            전체 삭제
+          </button>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-center gap-2 w-full lg:w-auto">
+          <button id="previewPdfBtn" type="button" class="bg-slate-700 hover:bg-slate-600 text-white font-semibold text-xs sm:text-sm px-3.5 py-2.5 rounded-xl transition flex items-center gap-1.5">
+            <span>🔍 A4 미리보기</span>
+          </button>
+          <button id="printNowBtn" type="button" class="bg-slate-700 hover:bg-slate-600 text-white font-semibold text-xs sm:text-sm px-3.5 py-2.5 rounded-xl transition flex items-center gap-1.5">
+            <span>🖨️ 바로 인쇄</span>
+          </button>
+          <button id="downloadExcelBtn" type="button" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs sm:text-sm px-3.5 py-2.5 rounded-xl transition flex items-center gap-1.5">
+            <span>📊 내역 엑셀(.xlsx)</span>
+          </button>
+          <button id="downloadPdfBtn" type="button" class="bg-blue-500 hover:bg-blue-400 text-white font-bold text-xs sm:text-sm px-5 py-2.5 rounded-xl transition flex items-center gap-1.5 shadow-sm">
+            <span>📄 A4 PDF 다운로드</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- 4. 영수증·사진 카드 편집 그리드 -->
+      <section id="receiptList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></section>
+
+    </main>
+
+    <!-- 하단 푸터 -->
+    <footer class="bg-white border-t border-slate-200 mt-12 py-6 px-4 text-xs text-slate-500">
+      <div class="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+        <p>모든 이미지 보정 및 PDF 생성은 사용자의 기기(브라우저) 안에서만 처리되며 외부 서버로 전송되지 않습니다.</p>
+        <div class="flex items-center gap-4">
+          <button type="button" id="openPrivacyBtn" class="hover:text-slate-800 underline">개인정보 및 보안 안내</button>
+          <button type="button" id="openSeoHelperBtn" class="text-slate-400 hover:text-blue-600 underline">검색엔진 등록 파일 받기</button>
+        </div>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- A4 미리보기 모달 -->
+  <div id="previewModal" class="hidden fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+      <div class="px-5 py-3.5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 bg-slate-50">
+        <div>
+          <h3 class="text-base font-bold text-slate-900">📄 A4 인쇄 레이아웃 미리보기</h3>
+          <p class="text-xs text-slate-500">실제 PDF로 저장되거나 인쇄될 A4 용지 모양입니다.</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button" id="modalPrintBtn" class="px-3 py-1.5 text-xs font-bold bg-slate-800 hover:bg-slate-700 text-white rounded-lg">
+            🖨️ 바로 인쇄
+          </button>
+          <button type="button" id="modalDownloadPdfBtn" class="px-3 py-1.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
+            📄 PDF 저장
+          </button>
+          <button type="button" id="closePreviewBtn" class="px-3 py-1.5 text-xs font-semibold bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-lg">
+            닫기 ✕
+          </button>
+        </div>
+      </div>
+      <div id="previewContainer" class="p-6 overflow-y-auto bg-slate-200/80 space-y-6 flex flex-col items-center"></div>
+    </div>
+  </div>
+
+  <!-- 개별 영수증/사진 크게 보기 모달 -->
+  <div id="zoomModal" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+      <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+        <span id="zoomModalTitle" class="text-sm font-bold text-slate-800 truncate">영수증 상세 보기</span>
+        <button type="button" id="closeZoomBtn" class="px-3 py-1 text-xs font-semibold bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-lg">
+          닫기 ✕
+        </button>
+      </div>
+      <div class="p-4 overflow-auto bg-slate-100 flex items-center justify-center flex-1">
+        <img id="zoomModalImg" src="" alt="확대 이미지" class="max-w-full max-h-[75vh] object-contain bg-white shadow" />
+      </div>
+    </div>
+  </div>
+
+  <!-- 개인정보 안내 모달 -->
+  <div id="privacyModal" class="hidden fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <h3 class="text-base font-bold text-slate-900">🔒 100% 브라우저 로컬 처리 안내</h3>
+        <button type="button" id="closePrivacyBtn" class="text-slate-400 hover:text-slate-700 font-bold text-lg">✕</button>
+      </div>
+      <ul class="space-y-2.5 text-xs sm:text-sm text-slate-600 leading-relaxed">
+        <li>• <strong>외부 전송 없음:</strong> 본 서비스는 외부 서버나 AI API로 영수증·사진 데이터를 일절 전송하지 않습니다.</li>
+        <li>• <strong>즉시 메모리 파기:</strong> 모든 스캔 보정과 PDF/엑셀 변환은 사용자의 PC·스마트폰 브라우저 내부에서만 실행되며, 창을 닫으면 즉시 사라집니다.</li>
+        <li>• <strong>개인정보 안심:</strong> 카드번호, 사업자 정보, 현장 사진 등이 외부에 유출될 걱정이 없습니다.</li>
+      </ul>
+      <div class="pt-2 text-right">
+        <button type="button" id="confirmPrivacyBtn" class="bg-slate-900 text-white text-xs font-semibold px-4 py-2 rounded-lg">확인</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 검색엔진(구글·네이버) 사이트 등록 파일 생성 도우미 모달 -->
+  <div id="seoModal" class="hidden fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div>
+          <h3 class="text-base font-bold text-slate-900">🌐 무료 배포 & 구글·네이버 사이트 등록 도우미</h3>
+          <p class="text-xs text-slate-500">서버나 API 키가 필요 없으므로 index.html만 올리면 바로 운영 가능합니다.</p>
+        </div>
+        <button type="button" id="closeSeoBtn" class="text-slate-400 hover:text-slate-700 font-bold text-lg">✕</button>
+      </div>
+
+      <div class="space-y-2 text-xs">
+        <label for="siteDomainInput" class="block font-bold text-slate-700">
+          배포 후 발급받은 사이트 주소 입력 (예: https://my-a4.vercel.app)
+        </label>
+        <input
+          type="text"
+          id="siteDomainInput"
+          placeholder="https://내서비스명.vercel.app"
+          class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs sm:text-sm outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        <button type="button" id="dlRobotsBtn" class="bg-slate-800 hover:bg-slate-700 text-white font-semibold py-2.5 px-3 rounded-xl text-xs">
+          📥 robots.txt 다운로드
+        </button>
+        <button type="button" id="dlSitemapBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-3 rounded-xl text-xs">
+          📥 sitemap.xml 다운로드
+        </button>
+      </div>
+
+      <div class="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-xs text-slate-600 space-y-1">
+        <p class="font-bold text-slate-800">📌 초간단 3분 배포 순서</p>
+        <p>1. GitHub 저장소(또는 Vercel / Cloudflare Pages)에 <strong>index.html</strong>, <strong>robots.txt</strong>, <strong>sitemap.xml</strong> 3개 파일만 업로드합니다.</p>
+        <p>2. 별도의 환경변수나 API 키 설정 없이 즉시 무료 웹사이트 주소가 생성됩니다.</p>
+        <p>3. <strong>구글 서치 콘솔</strong>과 <strong>네이버 서치어드바이저</strong>에 주소와 <code>sitemap.xml</code>을 등록합니다.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 커스텀 확인 모달 (confirm() 대체) -->
+  <div id="confirmModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl space-y-4">
+      <h3 id="confirmTitle" class="text-base font-bold text-slate-900">확인</h3>
+      <p id="confirmMessage" class="text-xs sm:text-sm text-slate-600">진행하시겠습니까?</p>
+      <div class="flex justify-end gap-2 pt-2">
+        <button type="button" id="confirmCancelBtn" class="px-4 py-2 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg">취소</button>
+        <button type="button" id="confirmOkBtn" class="px-4 py-2 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-lg">삭제하기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 토스트 알림 컨테이너 (alert() 대체) -->
+  <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none px-4 sm:px-0"></div>
+
+  <script>
+    // =========================================================================
+    // 0. 브라우저 호환성 안전 ID 생성기 (카톡 인앱 브라우저 등 구형 환경 대응)
+    // =========================================================================
+    function generateSafeId() {
+      if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+      }
+      return 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 9);
+    }
+
+    // =========================================================================
+    // 1. 전역 상태 및 DOM 요소 참조
+    // =========================================================================
+    const STORAGE_KEYS = {
+      GRID: 'a4_tool_grid',
+      ORIENT: 'a4_tool_orient',
+      FILTER: 'a4_tool_filter',
+      FIT: 'a4_tool_fit',
+      TITLE: 'a4_tool_title',
+      DASHED: 'a4_tool_dashed',
+      HEADER_SUM: 'a4_tool_header_sum'
+    };
+
+    let items = [];
+    let draggedId = null;
+
+    const el = {
+      printSheetContainer: document.getElementById('printSheetContainer'),
+      loadDemoBtn: document.getElementById('loadDemoBtn'),
+      presetReceiptBtn: document.getElementById('presetReceiptBtn'),
+      presetPhotoSheetBtn: document.getElementById('presetPhotoSheetBtn'),
+      gridLayout: document.getElementById('gridLayout'),
+      orientationSelect: document.getElementById('orientationSelect'),
+      filterModeSelect: document.getElementById('filterModeSelect'),
+      fitModeSelect: document.getElementById('fitModeSelect'),
+      pdfTitleInput: document.getElementById('pdfTitleInput'),
+      dashedBorderToggle: document.getElementById('dashedBorderToggle'),
+      showHeaderSumToggle: document.getElementById('showHeaderSumToggle'),
+      dropZone: document.getElementById('dropZone'),
+      fileInput: document.getElementById('fileInput'),
+      actionBar: document.getElementById('actionBar'),
+      summaryBadge: document.getElementById('summaryBadge'),
+      totalAmountBadge: document.getElementById('totalAmountBadge'),
+      sortDateBtn: document.getElementById('sortDateBtn'),
+      clearAllBtn: document.getElementById('clearAllBtn'),
+      previewPdfBtn: document.getElementById('previewPdfBtn'),
+      printNowBtn: document.getElementById('printNowBtn'),
+      downloadExcelBtn: document.getElementById('downloadExcelBtn'),
+      downloadPdfBtn: document.getElementById('downloadPdfBtn'),
+      receiptList: document.getElementById('receiptList'),
+      previewModal: document.getElementById('previewModal'),
+      modalPrintBtn: document.getElementById('modalPrintBtn'),
+      modalDownloadPdfBtn: document.getElementById('modalDownloadPdfBtn'),
+      closePreviewBtn: document.getElementById('closePreviewBtn'),
+      previewContainer: document.getElementById('previewContainer'),
+      zoomModal: document.getElementById('zoomModal'),
+      zoomModalTitle: document.getElementById('zoomModalTitle'),
+      zoomModalImg: document.getElementById('zoomModalImg'),
+      closeZoomBtn: document.getElementById('closeZoomBtn'),
+      privacyModal: document.getElementById('privacyModal'),
+      openPrivacyBtn: document.getElementById('openPrivacyBtn'),
+      closePrivacyBtn: document.getElementById('closePrivacyBtn'),
+      confirmPrivacyBtn: document.getElementById('confirmPrivacyBtn'),
+      seoModal: document.getElementById('seoModal'),
+      openSeoHelperBtn: document.getElementById('openSeoHelperBtn'),
+      closeSeoBtn: document.getElementById('closeSeoBtn'),
+      siteDomainInput: document.getElementById('siteDomainInput'),
+      dlRobotsBtn: document.getElementById('dlRobotsBtn'),
+      dlSitemapBtn: document.getElementById('dlSitemapBtn'),
+      confirmModal: document.getElementById('confirmModal'),
+      confirmTitle: document.getElementById('confirmTitle'),
+      confirmMessage: document.getElementById('confirmMessage'),
+      confirmCancelBtn: document.getElementById('confirmCancelBtn'),
+      confirmOkBtn: document.getElementById('confirmOkBtn'),
+      toastContainer: document.getElementById('toastContainer')
+    };
+
+    // =========================================================================
+    // 2. 커스텀 알림(Toast) 및 확인 모달
+    // =========================================================================
+    function showToast(message, type = 'info') {
+      const colors = {
+        info: 'bg-slate-900 text-white border-slate-700',
+        success: 'bg-emerald-600 text-white border-emerald-500',
+        warning: 'bg-amber-500 text-slate-950 border-amber-400',
+        error: 'bg-rose-600 text-white border-rose-500'
+      };
+
+      const toast = document.createElement('div');
+      toast.className = `pointer-events-auto border px-4 py-3 rounded-xl shadow-lg text-xs sm:text-sm font-medium transition-all duration-300 opacity-0 translate-y-2 ${colors[type] || colors.info}`;
+      toast.textContent = message;
+      el.toastContainer.appendChild(toast);
+
+      requestAnimationFrame(() => {
+        toast.classList.remove('opacity-0', 'translate-y-2');
+      });
+
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 300);
+      }, 3200);
+    }
+
+    function showConfirmDialog(title, message) {
+      return new Promise((resolve) => {
+        el.confirmTitle.textContent = title;
+        el.confirmMessage.textContent = message;
+        el.confirmModal.classList.remove('hidden');
+
+        const cleanup = (result) => {
+          el.confirmModal.classList.add('hidden');
+          el.confirmOkBtn.removeEventListener('click', onOk);
+          el.confirmCancelBtn.removeEventListener('click', onCancel);
+          resolve(result);
+        };
+
+        const onOk = () => cleanup(true);
+        const onCancel = () => cleanup(false);
+
+        el.confirmOkBtn.addEventListener('click', onOk);
+        el.confirmCancelBtn.addEventListener('click', onCancel);
+      });
+    }
+
+    // =========================================================================
+    // 3. 저장된 설정 불러오기 및 프리셋 전환
+    // =========================================================================
+    (function loadSavedSettings() {
+      const g = localStorage.getItem(STORAGE_KEYS.GRID);
+      if (g) el.gridLayout.value = g;
+
+      const o = localStorage.getItem(STORAGE_KEYS.ORIENT);
+      if (o) el.orientationSelect.value = o;
+
+      const f = localStorage.getItem(STORAGE_KEYS.FILTER);
+      if (f) el.filterModeSelect.value = f;
+
+      const fit = localStorage.getItem(STORAGE_KEYS.FIT);
+      if (fit) el.fitModeSelect.value = fit;
+
+      const t = localStorage.getItem(STORAGE_KEYS.TITLE);
+      if (t) el.pdfTitleInput.value = t;
+
+      const d = localStorage.getItem(STORAGE_KEYS.DASHED);
+      if (d !== null) el.dashedBorderToggle.checked = d === 'true';
+
+      const hs = localStorage.getItem(STORAGE_KEYS.HEADER_SUM);
+      if (hs !== null) el.showHeaderSumToggle.checked = hs === 'true';
+
+      updatePresetButtonHighlight();
+
+      if (window.location.protocol.startsWith('http') && !window.location.hostname.includes('localhost')) {
+        el.siteDomainInput.value = window.location.origin;
+      }
+    })();
+
+    function saveSettings() {
+      localStorage.setItem(STORAGE_KEYS.GRID, el.gridLayout.value);
+      localStorage.setItem(STORAGE_KEYS.ORIENT, el.orientationSelect.value);
+      localStorage.setItem(STORAGE_KEYS.FILTER, el.filterModeSelect.value);
+      localStorage.setItem(STORAGE_KEYS.FIT, el.fitModeSelect.value);
+      localStorage.setItem(STORAGE_KEYS.TITLE, el.pdfTitleInput.value);
+      localStorage.setItem(STORAGE_KEYS.DASHED, String(el.dashedBorderToggle.checked));
+      localStorage.setItem(STORAGE_KEYS.HEADER_SUM, String(el.showHeaderSumToggle.checked));
+    }
+
+    function updatePresetButtonHighlight() {
+      const isReceiptMode = el.filterModeSelect.value === 'scan' && el.gridLayout.value === '6';
+      const isPhotoMode = el.filterModeSelect.value === 'brightColor' && el.gridLayout.value === '4';
+
+      const activeClass = 'text-xs font-bold px-3 py-1.5 rounded-xl border transition bg-blue-600 text-white border-blue-600 shadow-2xs';
+      const inactiveClass = 'text-xs font-bold px-3 py-1.5 rounded-xl border transition bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100';
+
+      el.presetReceiptBtn.className = isReceiptMode ? activeClass : inactiveClass;
+      el.presetPhotoSheetBtn.className = isPhotoMode ? activeClass : inactiveClass;
+    }
+
+    el.presetReceiptBtn.addEventListener('click', () => {
+      el.gridLayout.value = '6';
+      el.orientationSelect.value = 'portrait';
+      el.filterModeSelect.value = 'scan';
+      el.fitModeSelect.value = 'contain';
+      el.dashedBorderToggle.checked = true;
+      el.showHeaderSumToggle.checked = true;
+      saveSettings();
+      updatePresetButtonHighlight();
+      reprocessAllImages();
+      showToast('영수증 경비처리용(A4 세로 6장 · 스캔 흑백)으로 설정되었습니다.', 'info');
+    });
+
+    el.presetPhotoSheetBtn.addEventListener('click', () => {
+      el.gridLayout.value = '4';
+      el.orientationSelect.value = 'portrait';
+      el.filterModeSelect.value = 'brightColor';
+      el.fitModeSelect.value = 'cover';
+      el.dashedBorderToggle.checked = false;
+      el.showHeaderSumToggle.checked = false;
+      saveSettings();
+      updatePresetButtonHighlight();
+      reprocessAllImages();
+      showToast('현장 사진대지용(A4 세로 4장 · 선명 컬러 · 칸 채우기)으로 설정되었습니다.', 'info');
+    });
+
+    // =========================================================================
+    // 4. 업로드 및 옵션 변경 이벤트 연결
+    // =========================================================================
+    window.addEventListener('dragover', (e) => e.preventDefault());
+    window.addEventListener('drop', (e) => e.preventDefault());
+
+    el.dropZone.addEventListener('click', () => el.fileInput.click());
+
+    el.dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      el.dropZone.classList.add('border-blue-600', 'bg-blue-50/70');
+    });
+
+    el.dropZone.addEventListener('dragleave', () => {
+      el.dropZone.classList.remove('border-blue-600', 'bg-blue-50/70');
+    });
+
+    el.dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      el.dropZone.classList.remove('border-blue-600', 'bg-blue-50/70');
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        handleFiles(e.dataTransfer.files);
+      }
+    });
+
+    el.fileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files.length > 0) {
+        handleFiles(e.target.files);
+        e.target.value = '';
+      }
+    });
+
+    el.gridLayout.addEventListener('change', () => {
+      saveSettings();
+      updatePresetButtonHighlight();
+      updateSummaryBar();
+    });
+
+    el.orientationSelect.addEventListener('change', () => {
+      saveSettings();
+      updateSummaryBar();
+    });
+
+    el.filterModeSelect.addEventListener('change', () => {
+      saveSettings();
+      updatePresetButtonHighlight();
+      reprocessAllImages();
+    });
+
+    el.fitModeSelect.addEventListener('change', () => {
+      saveSettings();
+    });
+
+    el.pdfTitleInput.addEventListener('input', saveSettings);
+    el.dashedBorderToggle.addEventListener('change', saveSettings);
+    el.showHeaderSumToggle.addEventListener('change', saveSettings);
+
+    el.sortDateBtn.addEventListener('click', () => {
+      items.sort((a, b) => (a.date || '9999-99-99').localeCompare(b.date || '9999-99-99'));
+      renderAll();
+      showToast('입력된 날짜순으로 정렬되었습니다.', 'success');
+    });
+
+    el.clearAllBtn.addEventListener('click', async () => {
+      if (items.length === 0) return;
+      const ok = await showConfirmDialog(
+        '전체 삭제 확인',
+        '현재 올려진 모든 영수증·사진과 작성한 메모가 삭제됩니다. 계속할까요?'
+      );
+      if (!ok) return;
+      items = [];
+      renderAll();
+      showToast('모두 삭제되었습니다.', 'info');
+    });
+
+    // 샘플 체험 데이터 로드
+    el.loadDemoBtn.addEventListener('click', async () => {
+      const demos = [
+        {
+          fileName: '영수증_스타벅스.jpg',
+          date: '2026-11-18',
+          amount: 13500,
+          memo: '거래처 미팅 음료 (3잔)',
+          lines: [
+            '[신용카드 매출전표]',
+            '가맹점: 스타벅스코리아',
+            '일시: 2026-11-18 14:20',
+            '-------------------------',
+            '아메리카노 T x 3   13,500',
+            '-------------------------',
+            '합계금액:        13,500원'
+          ]
+        },
+        {
+          fileName: '영수증_한밭설렁탕.jpg',
+          date: '2026-11-19',
+          amount: 36000,
+          memo: '영업팀 야근 식대 (3명)',
+          lines: [
+            '[신용카드 영수증]',
+            '상호명: 한밭설렁탕 본점',
+            '일시: 2026-11-19 20:15',
+            '-------------------------',
+            '특설렁탕 x 3       36,000',
+            '-------------------------',
+            '합계금액:        36,000원'
+          ]
+        },
+        {
+          fileName: '영수증_문구점.jpg',
+          date: '2026-11-21',
+          amount: 18400,
+          memo: '사무실 A4용지·파일 구매',
+          lines: [
+            '[현금/카드 영수증]',
+            '상호명: 오피스디포 둔산점',
+            '일시: 2026-11-21 11:05',
+            '-------------------------',
+            'A4 복사용지 외     18,400',
+            '-------------------------',
+            '합계금액:        18,400원'
+          ]
+        }
+      ];
+
+      const filterMode = el.filterModeSelect.value;
+
+      for (const d of demos) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 440;
+        canvas.height = 620;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#F8FAFC';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = '#94A3B8';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(14, 14, canvas.width - 28, canvas.height - 28);
+
+        ctx.fillStyle = '#0F172A';
+        ctx.font = 'bold 21px monospace';
+        d.lines.forEach((line, idx) => {
+          ctx.fillText(line, 34, 80 + idx * 66);
+        });
+
+        const rawUrl = canvas.toDataURL('image/jpeg', 0.9);
+        const img = await new Promise((resolve) => {
+          const i = new Image();
+          i.onload = () => resolve(i);
+          i.src = rawUrl;
+        });
+
+        items.push({
+          id: generateSafeId(),
+          fileName: d.fileName,
+          imgElement: img,
+          rotation: 0,
+          processedDataUrl: processImageCanvas(img, 0, filterMode),
+          date: d.date,
+          amount: d.amount,
+          memo: d.memo
+        });
+      }
+
+      renderAll();
+      showToast('샘플 영수증 3장이 추가되었습니다! [A4 미리보기]나 [A4 PDF 다운로드]를 눌러보세요.', 'success');
+    });
+
+    // =========================================================================
+    // 5. 초고속 로컬 이미지 처리 엔진 (회전 + 적응형 스캔 보정)
+    // =========================================================================
+    async function handleFiles(fileList) {
+      const imageFiles = Array.from(fileList).filter((f) => f.type.startsWith('image/'));
+      if (imageFiles.length === 0) {
+        showToast('이미지 파일(JPG, PNG, WEBP)만 올릴 수 있습니다.', 'warning');
+        return;
+      }
+
+      const filterMode = el.filterModeSelect.value;
+
+      for (const file of imageFiles) {
+        try {
+          const imgElement = await loadImageFromFile(file);
+          const processedDataUrl = processImageCanvas(imgElement, 0, filterMode);
+
+          items.push({
+            id: generateSafeId(),
+            fileName: file.name,
+            imgElement,
+            rotation: 0,
+            processedDataUrl,
+            date: '',
+            amount: 0,
+            memo: ''
+          });
+        } catch (err) {
+          console.error('이미지 읽기 실패:', file.name, err);
+        }
+      }
+
+      renderAll();
+      showToast(`${imageFiles.length}장 처리 완료!`, 'success');
+    }
+
+    function loadImageFromFile(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = reject;
+          img.src = e.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function reprocessAllImages() {
+      const filterMode = el.filterModeSelect.value;
+      items.forEach((item) => {
+        item.processedDataUrl = processImageCanvas(item.imgElement, item.rotation, filterMode);
+      });
+      renderAll();
+    }
+
+    function processImageCanvas(img, rotationDeg, filterMode) {
+      const maxDimension = 1350; // 고화질 인쇄 및 메모리 균형점
+      const isRightAngle = rotationDeg === 90 || rotationDeg === 270;
+      const rawW = isRightAngle ? img.height : img.width;
+      const rawH = isRightAngle ? img.width : img.height;
+
+      let targetW = rawW;
+      let targetH = rawH;
+
+      if (targetW > maxDimension || targetH > maxDimension) {
+        if (targetW > targetH) {
+          targetH = Math.round((targetH * maxDimension) / targetW);
+          targetW = maxDimension;
+        } else {
+          targetW = Math.round((targetW * maxDimension) / targetH);
+          targetH = maxDimension;
+        }
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = targetW;
+      canvas.height = targetH;
+      const ctx = canvas.getContext('2d');
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, targetW, targetH);
+
+      ctx.save();
+      ctx.translate(targetW / 2, targetH / 2);
+      ctx.rotate((rotationDeg * Math.PI) / 180);
+      if (isRightAngle) {
+        ctx.drawImage(img, -targetH / 2, -targetW / 2, targetH, targetW);
+      } else {
+        ctx.drawImage(img, -targetW / 2, -targetH / 2, targetW, targetH);
+      }
+      ctx.restore();
+
+      if (filterMode === 'scan') {
+        // 적응형 히스토그램 기반 흑백 스캔 보정 (어두운 그림자 제거 + 글씨 대비 극대화)
+        const imageData = ctx.getImageData(0, 0, targetW, targetH);
+        const data = imageData.data;
+        const pixelCount = targetW * targetH;
+        const hist = new Uint32Array(256);
+        const grays = new Uint8Array(pixelCount);
+
+        for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+          const g = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+          grays[p] = g;
+          hist[g]++;
+        }
+
+        let cum = 0;
+        let blackPoint = 45;
+        let whitePoint = 205;
+
+        for (let v = 0; v < 256; v++) {
+          cum += hist[v];
+          if (cum >= pixelCount * 0.04) {
+            blackPoint = Math.min(95, Math.max(20, v));
+            break;
+          }
+        }
+
+        cum = 0;
+        for (let v = 255; v >= 0; v--) {
+          cum += hist[v];
+          if (cum >= pixelCount * 0.35) {
+            whitePoint = Math.max(blackPoint + 55, Math.min(240, v));
+            break;
+          }
+        }
+
+        const scale = 255 / (whitePoint - blackPoint);
+        for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+          let adjusted = (grays[p] - blackPoint) * scale;
+          if (adjusted < 0) adjusted = 0;
+          if (adjusted > 255) adjusted = 255;
+          data[i] = adjusted;
+          data[i + 1] = adjusted;
+          data[i + 2] = adjusted;
+        }
+        ctx.putImageData(imageData, 0, 0);
+      } else if (filterMode === 'brightColor') {
+        // 현장 사진대지 및 컬러 영수증용 밝기·대비 보정
+        const imageData = ctx.getImageData(0, 0, targetW, targetH);
+        const data = imageData.data;
+        const contrast = 1.12;
+        const brightness = 10;
+
+        for (let i = 0; i < data.length; i += 4) {
+          data[i] = clamp255((data[i] - 128) * contrast + 128 + brightness);
+          data[i + 1] = clamp255((data[i + 1] - 128) * contrast + 128 + brightness);
+          data[i + 2] = clamp255((data[i + 2] - 128) * contrast + 128 + brightness);
+        }
+        ctx.putImageData(imageData, 0, 0);
+      }
+
+      return canvas.toDataURL('image/jpeg', 0.90);
+    }
+
+    function clamp255(v) {
+      return v < 0 ? 0 : v > 255 ? 255 : v;
+    }
+
+    // =========================================================================
+    // 6. 화면 렌더링 및 드래그 순서 변경
+    // =========================================================================
+    function renderAll() {
+      updateSummaryBar();
+      renderCards();
+    }
+
+    function updateSummaryBar() {
+      const perPage = Number(el.gridLayout.value);
+      const totalPages = Math.ceil(items.length / perPage);
+      const orientLabel = el.orientationSelect.value === 'landscape' ? '가로' : '세로';
+      el.summaryBadge.textContent = `총 ${items.length}장 · A4(${orientLabel}) ${totalPages}장 분량`;
+
+      const totalAmount = items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+      if (totalAmount > 0) {
+        el.totalAmountBadge.textContent = `입력 금액 합계: ${totalAmount.toLocaleString()}원`;
+        el.totalAmountBadge.classList.remove('hidden');
+      } else {
+        el.totalAmountBadge.classList.add('hidden');
+      }
+
+      const hasAnyDate = items.some((item) => Boolean(item.date && item.date.trim()));
+      if (hasAnyDate && items.length > 1) {
+        el.sortDateBtn.classList.remove('hidden');
+      } else {
+        el.sortDateBtn.classList.add('hidden');
+      }
+
+      if (items.length === 0) {
+        el.actionBar.classList.add('hidden');
+      } else {
+        el.actionBar.classList.remove('hidden');
+      }
+    }
+
+    function renderCards() {
+      el.receiptList.innerHTML = '';
+
+      items.forEach((item, index) => {
+        const card = document.createElement('div');
+        card.className = 'receipt-card bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs flex flex-col transition-all';
+        card.draggable = true;
+        card.dataset.id = item.id;
+
+        const formattedAmount = item.amount > 0 ? Number(item.amount).toLocaleString() : '';
+
+        card.innerHTML = `
+          <div class="bg-slate-50 px-3 py-2 border-b border-slate-200 flex items-center justify-between gap-1 cursor-grab active:cursor-grabbing">
+            <div class="flex items-center gap-1.5 min-w-0">
+              <span class="inline-flex items-center justify-center w-5 h-5 rounded-md bg-slate-800 text-white text-[11px] font-extrabold shrink-0">${index + 1}</span>
+              <span class="text-xs font-semibold text-slate-600 truncate" title="${escapeHtml(item.fileName)}">
+                ${escapeHtml(item.fileName)}
+              </span>
+            </div>
+
+            <div class="flex items-center gap-1 shrink-0">
+              <button type="button" data-action="rotate" data-id="${item.id}" title="90도 회전" class="px-2 py-1 text-xs bg-white border border-slate-300 rounded-lg hover:bg-slate-100">↻회전</button>
+              <button type="button" data-action="zoom" data-id="${item.id}" title="크게 보기" class="px-2 py-1 text-xs bg-white border border-slate-300 rounded-lg hover:bg-slate-100">🔍</button>
+              <button type="button" data-action="left" data-id="${item.id}" title="앞으로 이동" class="px-1.5 py-1 text-xs bg-white border border-slate-300 rounded-lg hover:bg-slate-100 disabled:opacity-30" ${index === 0 ? 'disabled' : ''}>◀</button>
+              <button type="button" data-action="right" data-id="${item.id}" title="뒤로 이동" class="px-1.5 py-1 text-xs bg-white border border-slate-300 rounded-lg hover:bg-slate-100 disabled:opacity-30" ${index === items.length - 1 ? 'disabled' : ''}>▶</button>
+              <button type="button" data-action="delete" data-id="${item.id}" title="삭제" class="px-2 py-1 text-xs bg-rose-50 text-rose-600 border border-rose-200 rounded-lg hover:bg-rose-100">✕</button>
+            </div>
+          </div>
+
+          <div class="h-60 bg-slate-200/70 p-3 flex items-center justify-center overflow-hidden cursor-zoom-in" data-zoom-area="${item.id}">
+            <img src="${item.processedDataUrl}" alt="항목 ${index + 1}" class="max-h-full max-w-full object-contain shadow-xs bg-white pointer-events-none" />
+          </div>
+
+          <div class="p-3 bg-white border-t border-slate-100 space-y-2">
+            <div>
+              <label class="block text-[11px] font-bold text-slate-600 mb-1">A4 인쇄용 메모 / 설명 (선택)</label>
+              <input
+                type="text"
+                data-id="${item.id}"
+                value="${escapeHtml(item.memo)}"
+                placeholder="예: 영업팀 야근 식대 / 1층 배관 교체 전"
+                class="card-memo w-full text-xs sm:text-sm border border-slate-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 pt-0.5">
+              <div>
+                <label class="block text-[10px] font-semibold text-slate-400 mb-0.5">금액(원) · 자동합산용</label>
+                <input
+                  type="text"
+                  inputmode="numeric"
+                  data-id="${item.id}"
+                  value="${formattedAmount}"
+                  placeholder="예: 15,000"
+                  class="card-amount w-full text-xs border border-slate-200 bg-slate-50 focus:bg-white rounded-lg px-2.5 py-1.5 text-right font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+              <div>
+                <label class="block text-[10px] font-semibold text-slate-400 mb-0.5">결제일/촬영일 (선택)</label>
+                <input
+                  type="text"
+                  data-id="${item.id}"
+                  value="${escapeHtml(item.date)}"
+                  placeholder="2026-11-21"
+                  class="card-date w-full text-xs border border-slate-200 bg-slate-50 focus:bg-white rounded-lg px-2.5 py-1.5 text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+            </div>
+          </div>
+        `;
+
+        // 카드 드래그 앤 드롭 순서 변경 이벤트
+        card.addEventListener('dragstart', (e) => {
+          if (e.target.tagName === 'INPUT') {
+            e.preventDefault();
+            return;
+          }
+          draggedId = item.id;
+          card.classList.add('dragging');
+          e.dataTransfer.effectAllowed = 'move';
+        });
+
+        card.addEventListener('dragend', () => {
+          draggedId = null;
+          card.classList.remove('dragging');
+          el.receiptList.querySelectorAll('.receipt-card').forEach((c) => c.classList.remove('drag-over'));
+        });
+
+        card.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          if (draggedId && draggedId !== item.id) {
+            card.classList.add('drag-over');
+          }
+        });
+
+        card.addEventListener('dragleave', () => {
+          card.classList.remove('drag-over');
+        });
+
+        card.addEventListener('drop', (e) => {
+          e.preventDefault();
+          card.classList.remove('drag-over');
+          if (!draggedId || draggedId === item.id) return;
+
+          const fromIdx = items.findIndex((x) => x.id === draggedId);
+          const toIdx = items.findIndex((x) => x.id === item.id);
+          if (fromIdx !== -1 && toIdx !== -1) {
+            const [moved] = items.splice(fromIdx, 1);
+            items.splice(toIdx, 0, moved);
+            renderAll();
+          }
+        });
+
+        el.receiptList.appendChild(card);
+      });
+
+      // 카드 내부 버튼 이벤트 연결
+      el.receiptList.querySelectorAll('button').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          const id = e.currentTarget.dataset.id;
+          const action = e.currentTarget.dataset.action;
+          const idx = items.findIndex((x) => x.id === id);
+          if (idx === -1) return;
+
+          if (action === 'delete') {
+            items.splice(idx, 1);
+            renderAll();
+          } else if (action === 'left' && idx > 0) {
+            [items[idx - 1], items[idx]] = [items[idx], items[idx - 1]];
+            renderAll();
+          } else if (action === 'right' && idx < items.length - 1) {
+            [items[idx + 1], items[idx]] = [items[idx], items[idx + 1]];
+            renderAll();
+          } else if (action === 'rotate') {
+            const target = items[idx];
+            target.rotation = (target.rotation + 90) % 360;
+            target.processedDataUrl = processImageCanvas(
+              target.imgElement,
+              target.rotation,
+              el.filterModeSelect.value
+            );
+            renderAll();
+          } else if (action === 'zoom') {
+            openZoomModal(items[idx], idx + 1);
+          }
+        });
+      });
+
+      // 이미지 영역 클릭 시 크게 보기
+      el.receiptList.querySelectorAll('[data-zoom-area]').forEach((area) => {
+        area.addEventListener('click', (e) => {
+          const id = e.currentTarget.dataset.zoomArea;
+          const idx = items.findIndex((x) => x.id === id);
+          if (idx !== -1) openZoomModal(items[idx], idx + 1);
+        });
+      });
+
+      // 메모, 금액, 날짜 입력 실시간 동기화
+      el.receiptList.querySelectorAll('.card-memo').forEach((input) => {
+        input.addEventListener('input', (e) => {
+          const target = items.find((x) => x.id === e.target.dataset.id);
+          if (target) target.memo = e.target.value;
+        });
+      });
+
+      el.receiptList.querySelectorAll('.card-amount').forEach((input) => {
+        input.addEventListener('input', (e) => {
+          const target = items.find((x) => x.id === e.target.dataset.id);
+          if (!target) return;
+          const numeric = Number(e.target.value.replace(/\D/g, '')) || 0;
+          target.amount = numeric;
+          e.target.value = numeric > 0 ? numeric.toLocaleString() : '';
+          updateSummaryBar();
+        });
+      });
+
+      el.receiptList.querySelectorAll('.card-date').forEach((input) => {
+        input.addEventListener('input', (e) => {
+          const target = items.find((x) => x.id === e.target.dataset.id);
+          if (!target) return;
+          target.date = e.target.value;
+          updateSummaryBar();
+        });
+      });
+    }
+
+    function escapeHtml(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // 크게 보기 모달
+    function openZoomModal(item, number) {
+      el.zoomModalTitle.textContent = `#${number} · ${item.fileName}`;
+      el.zoomModalImg.src = item.processedDataUrl;
+      el.zoomModal.classList.remove('hidden');
+    }
+    el.closeZoomBtn.addEventListener('click', () => el.zoomModal.classList.add('hidden'));
+    el.zoomModal.addEventListener('click', (e) => {
+      if (e.target === el.zoomModal) el.zoomModal.classList.add('hidden');
+    });
+
+    // =========================================================================
+    // 7. A4 페이지 캔버스 렌더링 & PDF 생성 / 바로 인쇄
+    // =========================================================================
+    async function buildA4PageCanvases(scaleMultiplier) {
+      const isLandscape = el.orientationSelect.value === 'landscape';
+      const A4_WIDTH = isLandscape ? 841.89 : 595.28;
+      const A4_HEIGHT = isLandscape ? 595.28 : 841.89;
+      const MARGIN = 24;
+      const GAP = 10;
+
+      const perPage = Number(el.gridLayout.value);
+      let cols, rows;
+      if (perPage === 2) {
+        cols = isLandscape ? 2 : 1;
+        rows = isLandscape ? 1 : 2;
+      } else if (perPage === 4) {
+        cols = 2;
+        rows = 2;
+      } else if (perPage === 8) {
+        cols = 4;
+        rows = 2;
+      } else {
+        cols = 3;
+        rows = 2;
+      }
+
+      const docTitle = el.pdfTitleInput.value.trim();
+      const totalAmount = items.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+      const showSum = el.showHeaderSumToggle.checked && totalAmount > 0;
+      const headerHeight = docTitle ? 32 : 20;
+      const totalPages = Math.ceil(items.length / perPage);
+
+      const cellWidth = (A4_WIDTH - MARGIN * 2 - GAP * (cols - 1)) / cols;
+      const cellHeight = (A4_HEIGHT - MARGIN * 2 - headerHeight - GAP * (rows - 1)) / rows;
+
+      const pageCanvases = [];
+
+      for (let pageIdx = 0; pageIdx < totalPages; pageIdx++) {
+        const pageCanvas = document.createElement('canvas');
+        pageCanvas.width = Math.round(A4_WIDTH * scaleMultiplier);
+        pageCanvas.height = Math.round(A4_HEIGHT * scaleMultiplier);
+        const ctx = pageCanvas.getContext('2d');
+
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+
+        ctx.save();
+        ctx.scale(scaleMultiplier, scaleMultiplier);
+
+        const subSummary = showSum
+          ? `총 ${items.length}건 · 합계 ${totalAmount.toLocaleString()}원`
+          : `총 ${items.length}건`;
+
+        if (docTitle) {
+          ctx.fillStyle = '#0F172A';
+          ctx.font = 'bold 13px sans-serif';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(docTitle, MARGIN, MARGIN + 9);
+
+          ctx.fillStyle = '#475569';
+          ctx.font = '10px sans-serif';
+          ctx.fillText(subSummary, MARGIN, MARGIN + 23);
+        } else {
+          ctx.fillStyle = '#475569';
+          ctx.font = '600 10px sans-serif';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(`증빙 내역 (${subSummary})`, MARGIN, MARGIN + 9);
+        }
+
+        const pageText = `${pageIdx + 1} / ${totalPages} 페이지`;
+        ctx.fillStyle = '#64748B';
+        ctx.font = 'bold 10px sans-serif';
+        const pageTextW = ctx.measureText(pageText).width;
+        ctx.fillText(pageText, A4_WIDTH - MARGIN - pageTextW, MARGIN + 9);
+
+        ctx.restore();
+
+        const startIdx = pageIdx * perPage;
+        const endIdx = Math.min(startIdx + perPage, items.length);
+
+        for (let i = startIdx; i < endIdx; i++) {
+          const idxInPage = i - startIdx;
+          const col = idxInPage % cols;
+          const row = Math.floor(idxInPage / cols);
+
+          const x = MARGIN + col * (cellWidth + GAP);
+          const yTop = MARGIN + headerHeight + row * (cellHeight + GAP);
+
+          const cellCanvas = await renderCellCanvas(
+            items[i],
+            i + 1,
+            Math.round(cellWidth * scaleMultiplier),
+            Math.round(cellHeight * scaleMultiplier)
+          );
+
+          ctx.drawImage(
+            cellCanvas,
+            Math.round(x * scaleMultiplier),
+            Math.round(yTop * scaleMultiplier)
+          );
+        }
+
+        pageCanvases.push(pageCanvas);
+      }
+
+      return { pageCanvases, A4_WIDTH, A4_HEIGHT };
+    }
+
+    function renderCellCanvas(item, number, width, height) {
+      return new Promise((resolve) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, width, height);
+
+        // 테두리 / 점선 절취선
+        ctx.save();
+        ctx.strokeStyle = '#94A3B8';
+        ctx.lineWidth = Math.max(1.5, width * 0.0028);
+        if (el.dashedBorderToggle.checked) {
+          ctx.setLineDash([Math.round(width * 0.02), Math.round(width * 0.015)]);
+        }
+        ctx.strokeRect(2, 2, width - 4, height - 4);
+        ctx.restore();
+
+        const pad = Math.round(width * 0.04);
+        const topBarH = Math.round(height * 0.055);
+        const hasMemo = Boolean(item.memo && item.memo.trim());
+        const hasDate = Boolean(item.date && item.date.trim());
+        const footerH = hasMemo ? Math.round(height * 0.12) : hasDate ? Math.round(height * 0.07) : 0;
+
+        // 상단 번호 및 금액
+        ctx.fillStyle = '#1E293B';
+        ctx.font = `bold ${Math.round(topBarH * 0.58)}px sans-serif`;
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`#${number}`, pad, pad + topBarH / 2);
+
+        if (item.amount > 0) {
+          const amountStr = `${Number(item.amount).toLocaleString()}원`;
+          ctx.fillStyle = '#1D4ED8';
+          const amtW = ctx.measureText(amountStr).width;
+          ctx.fillText(amountStr, width - pad - amtW, pad + topBarH / 2);
+        }
+
+        // 하단 메모/날짜 영역
+        if (footerH > 0) {
+          const boxY = height - pad - footerH;
+          ctx.fillStyle = '#F8FAFC';
+          ctx.fillRect(pad, boxY, width - pad * 2, footerH);
+          ctx.strokeStyle = '#E2E8F0';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(pad, boxY, width - pad * 2, footerH);
+
+          const maxTextW = width - pad * 2 - 14;
+          const displayLine = [item.date ? `[${item.date.trim()}]` : '', item.memo ? item.memo.trim() : '']
+            .filter(Boolean)
+            .join(' ');
+
+          ctx.fillStyle = '#0F172A';
+          ctx.font = `bold ${Math.round(footerH * 0.34)}px sans-serif`;
+          ctx.textBaseline = 'middle';
+          ctx.fillText(truncateText(ctx, displayLine, maxTextW), pad + 7, boxY + footerH / 2);
+        }
+
+        // 중앙 이미지 삽입 (contain 또는 cover)
+        const img = new Image();
+        img.onload = () => {
+          const availX = pad;
+          const availY = pad + topBarH + 4;
+          const availW = width - pad * 2;
+          const availH = height - availY - pad - (footerH > 0 ? footerH + 6 : 0);
+
+          if (el.fitModeSelect.value === 'cover') {
+            const scale = Math.max(availW / img.width, availH / img.height);
+            const srcW = availW / scale;
+            const srcH = availH / scale;
+            const srcX = (img.width - srcW) / 2;
+            const srcY = (img.height - srcH) / 2;
+            ctx.drawImage(img, srcX, srcY, srcW, srcH, availX, availY, availW, availH);
+          } else {
+            const scale = Math.min(availW / img.width, availH / img.height);
+            const drawW = img.width * scale;
+            const drawH = img.height * scale;
+            const drawX = availX + (availW - drawW) / 2;
+            const drawY = availY + (availH - drawH) / 2;
+            ctx.drawImage(img, drawX, drawY, drawW, drawH);
+          }
+
+          resolve(canvas);
+        };
+        img.src = item.processedDataUrl;
+      });
+    }
+
+    function truncateText(ctx, text, maxWidth) {
+      let str = String(text || '');
+      if (ctx.measureText(str).width <= maxWidth) return str;
+      while (str.length > 1 && ctx.measureText(str + '…').width > maxWidth) {
+        str = str.slice(0, -1);
+      }
+      return str + '…';
+    }
+
+    // A4 미리보기 열기
+    el.previewPdfBtn.addEventListener('click', async () => {
+      if (items.length === 0) return;
+
+      el.previewContainer.innerHTML = '<p class="text-sm text-slate-600 py-10">A4 미리보기를 생성하고 있습니다...</p>';
+      el.previewModal.classList.remove('hidden');
+
+      const { pageCanvases } = await buildA4PageCanvases(1.4);
+      el.previewContainer.innerHTML = '';
+
+      pageCanvases.forEach((canvas, idx) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'bg-white shadow-xl border border-slate-300 p-2 rounded-lg';
+
+        const label = document.createElement('div');
+        label.className = 'text-xs font-bold text-slate-500 mb-1.5 px-1';
+        label.textContent = `A4 용지 ${idx + 1}페이지`;
+
+        canvas.className = 'max-w-full h-auto border border-slate-200';
+        wrapper.appendChild(label);
+        wrapper.appendChild(canvas);
+        el.previewContainer.appendChild(wrapper);
+      });
+    });
+
+    el.closePreviewBtn.addEventListener('click', () => el.previewModal.classList.add('hidden'));
+    el.previewModal.addEventListener('click', (e) => {
+      if (e.target === el.previewModal) el.previewModal.classList.add('hidden');
+    });
+
+    // 바로 인쇄하기
+    async function triggerDirectPrint() {
+      if (items.length === 0) return;
+      el.previewModal.classList.add('hidden');
+
+      const { pageCanvases } = await buildA4PageCanvases(2.5);
+      el.printSheetContainer.innerHTML = '';
+
+      for (const canvas of pageCanvases) {
+        const img = document.createElement('img');
+        img.src = canvas.toDataURL('image/jpeg', 0.92);
+        img.className = 'print-page-img';
+        el.printSheetContainer.appendChild(img);
+      }
+
+      setTimeout(() => {
+        window.print();
+      }, 150);
+    }
+
+    el.printNowBtn.addEventListener('click', triggerDirectPrint);
+    el.modalPrintBtn.addEventListener('click', triggerDirectPrint);
+
+    // 고화질 A4 PDF 다운로드
+    async function triggerPdfDownload() {
+      if (items.length === 0) return;
+
+      if (typeof PDFLib === 'undefined') {
+        showToast('PDF 생성 모듈을 불러오는 중입니다. 2초 후 다시 눌러주시거나 [바로 인쇄]를 이용해 주세요.', 'warning');
+        return;
+      }
+
+      const origHtml = el.downloadPdfBtn.innerHTML;
+      el.downloadPdfBtn.disabled = true;
+      el.downloadPdfBtn.innerHTML = '<span>⏳ PDF 생성 중...</span>';
+
+      try {
+        const { PDFDocument } = PDFLib;
+        const pdfDoc = await PDFDocument.create();
+
+        const { pageCanvases, A4_WIDTH, A4_HEIGHT } = await buildA4PageCanvases(3);
+
+        for (const pageCanvas of pageCanvases) {
+          const jpgBytes = await new Promise((resolve) => {
+            pageCanvas.toBlob((blob) => blob.arrayBuffer().then(resolve), 'image/jpeg', 0.93);
+          });
+          const jpgImage = await pdfDoc.embedJpg(jpgBytes);
+          const page = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
+          page.drawImage(jpgImage, {
+            x: 0,
+            y: 0,
+            width: A4_WIDTH,
+            height: A4_HEIGHT
+          });
+        }
+
+        const pdfBytes = await pdfDoc.save();
+        const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+
+        const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `A4_증빙정리_${today}.pdf`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('A4 증빙 PDF 파일이 다운로드되었습니다!', 'success');
+      } catch (err) {
+        console.error(err);
+        showToast('PDF 생성 중 오류가 발생했습니다. 다시 시도해 주세요.', 'error');
+      } finally {
+        el.downloadPdfBtn.disabled = false;
+        el.downloadPdfBtn.innerHTML = origHtml;
+      }
+    }
+
+    el.downloadPdfBtn.addEventListener('click', triggerPdfDownload);
+    el.modalDownloadPdfBtn.addEventListener('click', triggerPdfDownload);
+
+    // =========================================================================
+    // 8. 내역 엑셀(.xlsx) 다운로드
+    // =========================================================================
+    el.downloadExcelBtn.addEventListener('click', () => {
+      if (items.length === 0) return;
+
+      if (typeof XLSX === 'undefined') {
+        showToast('엑셀 변환 모듈을 불러오는 중입니다. 잠시 후 다시 눌러주세요.', 'warning');
+        return;
+      }
+
+      const rows = items.map((item, idx) => ({
+        번호: idx + 1,
+        파일명: item.fileName,
+        날짜: item.date || '',
+        금액: Number(item.amount) || 0,
+        '메모(사용내역)': item.memo || ''
+      }));
+
+      const totalAmount = rows.reduce((s, r) => s + r.금액, 0);
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const lastRow = rows.length + 1;
+
+      XLSX.utils.sheet_add_aoa(
+        ws,
+        [['합계', '', '', { t: 'n', v: totalAmount, f: `SUM(D2:D${lastRow})` }, '']],
+        { origin: `A${lastRow + 1}` }
+      );
+
+      ws['!cols'] = [
+        { wch: 8 },
+        { wch: 24 },
+        { wch: 14 },
+        { wch: 15 },
+        { wch: 32 }
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '증빙내역');
+
+      const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      XLSX.writeFile(wb, `증빙내역_${today}.xlsx`);
+      showToast('엑셀(.xlsx) 파일이 다운로드되었습니다.', 'success');
+    });
+
+    // =========================================================================
+    // 9. 개인정보 및 검색엔진 사이트 등록 파일 생성기
+    // =========================================================================
+    el.openPrivacyBtn.addEventListener('click', () => el.privacyModal.classList.remove('hidden'));
+    el.closePrivacyBtn.addEventListener('click', () => el.privacyModal.classList.add('hidden'));
+    el.confirmPrivacyBtn.addEventListener('click', () => el.privacyModal.classList.add('hidden'));
+
+    el.openSeoHelperBtn.addEventListener('click', () => el.seoModal.classList.remove('hidden'));
+    el.closeSeoBtn.addEventListener('click', () => el.seoModal.classList.add('hidden'));
+
+    function triggerTextFileDownload(filename, content, mimeType = 'text/plain;charset=utf-8') {
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    el.dlRobotsBtn.addEventListener('click', () => {
+      const baseUrl = (el.siteDomainInput.value.trim() || 'https://내서비스명.vercel.app').replace(/\/+$/, '');
+      const robots = `User-agent: *\nAllow: /\n\nSitemap: ${baseUrl}/sitemap.xml\n`;
+      triggerTextFileDownload('robots.txt', robots);
+      showToast('robots.txt 파일이 다운로드되었습니다.', 'success');
+    });
+
+    el.dlSitemapBtn.addEventListener('click', () => {
+      const baseUrl = (el.siteDomainInput.value.trim() || 'https://내서비스명.vercel.app').replace(/\/+$/, '');
+      const today = new Date().toISOString().slice(0, 10);
+      const sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url>\n    <loc>${baseUrl}/</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>1.0</priority>\n  </url>\n</urlset>\n`;
+      triggerTextFileDownload('sitemap.xml', sitemap, 'application/xml;charset=utf-8');
+      showToast('sitemap.xml 파일이 다운로드되었습니다.', 'success');
+    });
+  </script>
+</body>
+</html>
